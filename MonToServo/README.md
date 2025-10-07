@@ -1,4 +1,4 @@
-# 🤖 ServoControl_SerialFunctions — Керування сервоприводом через Serial Monitor (Arduino)
+# 🤖 MonToServo — Керування сервоприводом через Serial Monitor (Arduino)
 
 ---
 
