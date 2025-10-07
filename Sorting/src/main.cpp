@@ -1,81 +1,174 @@
+/**
+ * @file main.cpp
+ * @brief Демонстрація сортування масиву за алгоритмом «Бульбашки» на платформі Arduino.
+ *
+ * Ця програма ініціалізує масив цілих чисел випадковими значеннями, виводить його
+ * невідсортований вміст, сортує за допомогою алгоритму «Бульбашки» (у стандартному
+ * або з моніторингом процесу варіанті), а потім відображає відсортований масив.
+ * Взаємодія з користувачем відбувається через серійний монітор — програма
+ * запитує підтвердження для переходу до кожного етапу.
+ *
+ * Можливості:
+ * - Генерація випадкових чисел у заданому діапазоні.
+ * - Запити до користувача через серійний монітор.
+ * - Реалізація алгоритму сортування «Бульбашкою» з можливістю відстеження процесу.
+ * - Виведення масиву до і після сортування.
+ *
+ * Функції:
+ * - FillArray: заповнює масив випадковими цілими числами.
+ * - WaitAnyKey: очікує натискання будь-якої клавіші через серійний монітор.
+ * - PrintArray: виводить вміст масиву у серійний монітор.
+ * - BubbleSort: сортує масив за зростанням методом «Бульбашки».
+ *
+ * @author Дмитро Агеєв
+ * @date 05.10.2025
+ */
+
 #include <Arduino.h> // Бібліотека Arduino для базових функцій
 #include "BubbleSort_Mon.h"
 
 // Межі випадкових чисел (унікальні назви, щоб уникнути конфлікту)
-const int RND_MIN = 0; 
+/**
+ * @brief Minimum value for random number generation.
+ */
+const int RND_MIN = 0;
+/**
+ * @brief Maximum value for random number generation.
+ *
+ * Used to define the upper bound (exclusive) for random values in the program.
+ */
 const int RND_MAX = 100;
+/**
+ * @brief Defines the size of the array used in the program.
+ *
+ * This constant specifies the number of elements that the array will hold.
+ */
 const int MY_ARRAY_SIZE = 10;
 
 int MyArr[MY_ARRAY_SIZE]; // Масив для збереження випадкових чисел
 
 // Прототипи функцій
-void FillArray(int arr[], int size);              
-void WaitAnyKey(String msg);                      
-void BubbleSort(int arr[], int size);             
-void PrintArray(int arr[], int size, String msg); 
+void FillArray(int arr[], int size);
+void WaitAnyKey(String msg);
+void BubbleSort(int arr[], int size);
+void PrintArray(int arr[], int size, String msg);
 
-void setup() {
+/**
+ * @brief Ініціалізує серійний порт та демонструє операції з масивом.
+ *
+ * Функція виконує такі кроки:
+ * 1. Ініціалізує серійний порт на швидкості 9600 бод.
+ * 2. Очікує введення користувача для заповнення масиву випадковими числами.
+ * 3. Очікує введення користувача для виведення невідсортованого масиву.
+ * 4. Очікує введення користувача для сортування масиву методом BubbleSort або BubbleSort_Mon.
+ * 5. Виводить відсортований масив.
+ *
+ * Повідомлення та підказки виводяться українською мовою.
+ */
+void setup()
+{
   // put your setup code here, to run once:
-  Serial.begin(9600);  
+  Serial.begin(9600);
 
   WaitAnyKey("Натисніть будь-яку клавішу, щоб заповнити масив випадковими числами...");
-  FillArray(MyArr, MY_ARRAY_SIZE); 
+  FillArray(MyArr, MY_ARRAY_SIZE);
 
   WaitAnyKey("Натисніть будь-яку клавішу, щоб переглянути вміст масиву...");
   PrintArray(MyArr, MY_ARRAY_SIZE, "Несортований масив:");
 
   WaitAnyKey("Натисніть будь-яку клавішу, щоб відсортувати масив методом 'Бульбашки'...");
 
- /* Поставити "зірочку" -> /
+  /* Поставити "зірочку" -> /
 
- BubbleSort(MyArr, MY_ARRAY_SIZE); 
- /*/
- BubbleSort_Mon(MyArr, MY_ARRAY_SIZE); 
-/**/
-
+  BubbleSort(MyArr, MY_ARRAY_SIZE);
+  /*/
+  BubbleSort_Mon(MyArr, MY_ARRAY_SIZE);
+  /**/
 
   PrintArray(MyArr, MY_ARRAY_SIZE, "Масив після сортування (за зростанням):");
 }
 
-void loop() {
+void loop()
+{
   // put your main code here, to run repeatedly:
 }
 
 // put function definitions here:
-void FillArray(int arr[], int size) {
+
+
+/**
+ * @brief Заповнює масив випадковими цілими числами у заданому діапазоні.
+ *
+ * Функція ініціалізує генератор випадкових чисел та заповнює масив arr
+ * випадковими значеннями від RND_MIN до RND_MAX включно.
+ *
+ * @param arr Масив для заповнення.
+ * @param size Кількість елементів у масиві.
+ */
+void FillArray(int arr[], int size)
+{
   randomSeed(analogRead(A0));
-  for (int i = 0; i < size; i++) {
+  for (int i = 0; i < size; i++)
+  {
     arr[i] = random(RND_MIN, RND_MAX + 1);
   }
   Serial.println("Масив заповнено випадковими числами.\r\n");
 }
 
+/**
+ * @brief Очікує натискання будь-якої клавіші користувачем через серійний інтерфейс.
+ *
+ * Виводить задане повідомлення у серійний монітор та блокує виконання,
+ * доки не буде отримано будь-які дані із серійного порту. Після натискання
+ * клавіші функція зчитує та відкидає введене значення.
+ *
+ * @param msg Повідомлення, яке буде показано користувачу під час очікування.
+ */
 void WaitAnyKey(String msg)
 {
   Serial.println(msg);
-  while (!Serial.available()) delay(10);
+  while (!Serial.available())
+    delay(10);
   Serial.read();
 }
 
-void PrintArray(int arr[], int size, String msg) {
+/**
+ * @brief Виводить вміст цілочисельного масиву у серійний монітор, перед цим показує повідомлення.
+ *
+ * Функція спочатку виводить задане повідомлення, потім — усі елементи масиву, розділені табуляцією.
+ * Після завершення виведення елементів додає символ нового рядка.
+ *
+ * @param arr   Масив цілих чисел для виведення.
+ * @param size  Кількість елементів у масиві.
+ * @param msg   Повідомлення, яке буде показано перед вмістом масиву.
+ */
+void PrintArray(int arr[], int size, String msg)
+{
   Serial.println(msg);
-  for (int i = 0; i < size; i++) {
+  for (int i = 0; i < size; i++)
+  {
     Serial.print(arr[i]);
-    if (i < size - 1) Serial.print("\t");
+    if (i < size - 1)
+      Serial.print("\t");
   }
   Serial.println();
 }
 
-
-// Функція BubbleSort виконує сортування масиву за зростанням 
-// методом «бульбашки» (Bubble Sort).
-// Принцип роботи: порівнюються сусідні елементи масиву, 
-// і якщо поточний більший за наступний — вони міняються місцями.
-// Таким чином, після кожного проходу найбільший елемент «спливає» в кінець масиву, 
-// тому назва «бульбашка».
-
-
-void BubbleSort(int arr[], int size) {
+/**
+ * @brief Сортує масив цілих чисел методом бульбашки (Bubble Sort).
+ *
+ * Функція BubbleSort виконує сортування масиву за зростанням
+ * методом «бульбашки» (Bubble Sort).
+ * Принцип роботи: порівнюються сусідні елементи масиву,
+ * і якщо поточний більший за наступний — вони міняються місцями.
+ * Таким чином, після кожного проходу найбільший елемент «спливає» в кінець масиву,
+ * тому назва «бульбашка».
+ *
+ * @param arr Масив цілих чисел для сортування.
+ * @param size Кількість елементів у масиві.
+ */
+void BubbleSort(int arr[], int size)
+{
 
   // Виведення інформаційного повідомлення в монітор порту,
   // щоб користувач знав, що розпочався процес сортування
