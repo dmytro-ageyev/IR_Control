@@ -9,8 +9,7 @@
 			"path": "MonToServo"
 		},
 		{
-			"name": "Servo_Pot",
-			"path": "../../../PlatformIO/Projects/Servo_Pot"
+			"path": "Servo_Pot"
 		}
 	],
 	"settings": {}
