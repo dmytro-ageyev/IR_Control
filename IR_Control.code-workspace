@@ -10,6 +10,10 @@
 		},
 		{
 			"path": "Servo_Pot"
+		},
+		{
+			"name": "IR_Control",
+			"path": "IR_Control"
 		}
 	],
 	"settings": {}
