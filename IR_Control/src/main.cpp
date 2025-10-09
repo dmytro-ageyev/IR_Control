@@ -1,248 +1,400 @@
-/**
- * @file IR_Remote_LED_Servo_Menu_Functions.ino
- * @brief Керування світлодіодом і сервоприводом через ІЧ-пульт з меню у Serial Monitor.
- *
- * Програма підтримує три режими:
- *   1️⃣ Моніторинг кнопок (вивід кодів у Serial Monitor)
- *   2️⃣ Керування вбудованим світлодіодом (кнопка '*' – УВІМКНУТИ, '#' – ВИМКНУТИ)
- *   3️⃣ Керування сервоприводом (кнопка '*' – зменшити кут на 3°, '#' – збільшити)
- *
- * Вибір режиму здійснюється через Serial Monitor.
- * Програма виводить у порт коди кнопок, зміну стану LED та кута сервоприводу.
- *
- * --- Підключення ---
- *  ІЧ-приймач (VS1838B або TSOP4838):
- *    - OUT → D2
- *    - VCC → 5V
- *    - GND → GND
- *
- *  Сервопривід:
- *    - Сигнал → D9
- *    - Живлення → 5V
- *    - Земля → GND
- *
- * --- Необхідні бібліотеки ---
- *  - <IRremote.h> (прийом сигналів пульта)
- *  - <Servo.h>    (керування сервоприводом)
- *
- * @author  Дмитро Агеєв
- * @date    09.10.2025
- * @license MIT
- */
-
 #include <Arduino.h>
-#include <IRremote.hpp>
 #include <Servo.h>
+#include <IRremote.hpp>   // Версія 4.5.0
+#define IR_RECEIVE_PIN 2
 
-// ----------------------------------------------------------
-//                    Константи та змінні
-// ----------------------------------------------------------
+// === Константи та глобальні змінні ===
+#define LED_PIN 13
+#define SERVO_PIN 9
 
-const int RECV_PIN = 2;   ///< Пін приймача ІЧ-пульта
-const int LED_PIN = 13;   ///< Вбудований світлодіод
-const int SERVO_PIN = 9;  ///< Пін сервоприводу
-const int ANGLE_STEP = 3; ///< Крок зміни кута сервоприводу
+Servo myServo;
 
-//IRrecv irrecv(RECV_PIN);  ///< Об’єкт приймача ІЧ-сигналів
-decode_results results;   ///< Збереження прийнятого коду
-Servo myServo;            ///< Об’єкт сервоприводу
+int servoAngle = 90;       // Початковий кут сервоприводу
+bool ledState = false;     // Поточний стан LED
+int currentMode = 0;       // 0 - Монітор, 1 - LED, 2 - Servo, 3 - Сервіс
 
-int menuMode = 0;         ///< Поточний режим (0 – моніторинг, 1 – LED, 2 – серво)
-int servoAngle = 90;      ///< Поточний кут сервоприводу
+// --- Коди кнопок пульта ---
+#define BTN_STAR 0xFFA25D  // *
+#define BTN_HASH 0xFFB04F  // #
 
-// ----------------------------------------------------------
-//                   ПРОТОТИПИ ФУНКЦІЙ
-// ----------------------------------------------------------
+// --- Прототипи функцій ---
 void PrintMenu();
 void HandleSerialInput();
-void HandleIRInput();
-void HandleLEDControl(uint16_t command);
-void HandleServoControl(uint16_t command);
-void PrintAngleChange(int angle);
+void HandleIRCommand();
+bool InitSystem();
+void PrintAction(String msg);
+void ControlLED(unsigned long code);
+void ControlServo(unsigned long code);
+String GetSystemTime();
+void PrintServiceStatus();
 
-// ----------------------------------------------------------
-//                         SETUP()
-// ----------------------------------------------------------
+// === Функція setup() ===
 void setup() {
   Serial.begin(9600);
-  Serial.println("====================================================");
-  Serial.println("📡 Система керування через ІЧ-пульт і Serial Monitor");
-  Serial.println("====================================================");
+  delay(300);
+  // Just to know which program is running on my Arduino
+  Serial.println(F("START " __FILE__ " from " __DATE__ ));
+  Serial.println(F("Using library version " VERSION_IRREMOTE));
+
+  // --- ЛОГО та банер ---
   Serial.println();
-  Serial.println(">  Ініціалізація пристроїв: ");
-  
-  //irrecv.enableIRIn();
-  IrReceiver.begin(RECV_PIN, ENABLE_LED_FEEDBACK);
-  pinMode(LED_PIN, OUTPUT);
-  Serial.println("[+]  Ініціалізація вбудованого світлодіоду ");
-  Serial.println("[+]  Ініціалізація IR-приймача ");
-  if (myServo.attach(SERVO_PIN))
-  {
-    Serial.println("[+]  Ініціалізація сервоприводу ");
-    myServo.write(servoAngle);
+  Serial.println(F("================================================================="));
+  Serial.println(F("                    Robocode/OS v.1.0 – Pro.Embedded"));
+  Serial.println(F("================================================================="));
+  delay(200);
+
+  Serial.println(F(" Платформа : Arduino Uno"));
+  Serial.println(F(" Ядро      : AVR @16MHz"));
+   Serial.println(F("----------------------------------------------------------------"));
+
+  if (!InitSystem()) {
+    Serial.println(F("\n[ !!!!  ] Критична помилка ініціалізації. Перезапустіть пристрій."));
+    while (true); // Зупинка програми при помилці
   }
-  else Serial.println("[-]  Ініціалізація сервоприводу ");
-  Serial.println();
+
+  Serial.println(F("[  OK  ] Ініціалізацію завершено успішно!"));
+  Serial.println(F("----------------------------------------------------------------"));
+  Serial.println(F(" Стан  : Система готова до роботи"));
+  Serial.println(F("----------------------------------------------------------------\n"));
+
   PrintMenu();
 }
 
-// ----------------------------------------------------------
-//                          LOOP()
-// ----------------------------------------------------------
+// === Основна петля програми ===
 void loop() {
-  HandleSerialInput(); // Обробка вводу з терміналу
-  HandleIRInput();     // Обробка команд із пульта
+  HandleSerialInput();
+  HandleIRCommand();
 }
 
-// ----------------------------------------------------------
-//                    ОБРОБКА ВВОДУ З SERIAL
-// ----------------------------------------------------------
-/**
- * @brief Обробляє введення користувача з терміналу (Serial Monitor).
- *
- * Користувач може ввести цифру 0, 1 або 2 для перемикання між режимами:
- * - 0 — Моніторинг кнопок пульта
- * - 1 — Керування світлодіодом
- * - 2 — Керування сервоприводом
- */
-void HandleSerialInput() {
-  if (Serial.available()) {
-    char choice = Serial.read();
-    switch (choice) {
-      case '0': menuMode = 0; break;
-      case '1': menuMode = 1; break;
-      case '2': menuMode = 2; break;
-      default:
-        Serial.println("❌ Невідомий вибір. Введіть 0, 1 або 2.");
-        return;
-    }
-    PrintMenu();
-  }
+// === Функція ініціалізації системи ===
+bool InitSystem() {
+  bool initOK = true;
+  
+  Serial.println(F("[ BOOT ] Ініціалізація системних модулів Robocode/OS..."));
+
+  Serial.println(F("\t Ініціалізація Serial... "));
+  delay(200);
+
+  if (Serial) Serial.println(F("[  OK  ] Проініціалізовано Serial."));
+  else { Serial.println(F("[FAILED] Сбій ініціалізації Serial !!!")); initOK = false; }
+
+  Serial.println(F("\t Запуск приймача ІЧ-сигналів... "));
+  IrReceiver.begin(IR_RECEIVE_PIN, ENABLE_LED_FEEDBACK);
+  delay(200);
+  Serial.print(F("\t Готов до прийому ІЧ-сигналів на порту "));
+  // printActiveIRProtocols(&Serial);
+  // Serial.println();
+  Serial.println(IR_RECEIVE_PIN);
+  if (IrReceiver.isIdle()) Serial.println(F("[  OK  ] Запущено приймач ІЧ-сигналів."));
+  else Serial.println(F("[FAILED] Сбій запуску приймача ІЧ-сигналів !!!"));
+
+  Serial.println(F("\t Ініціалізація сервоприводу... "));
+  myServo.attach(SERVO_PIN);
+  delay(200);
+  if (myServo.attached()) {
+    myServo.write(servoAngle);
+    Serial.print(F("\t Сервопривод готов до роботи на порту "));
+    Serial.println(SERVO_PIN);
+    Serial.print(F("\t Сервопривод розгорнуто на кут "));
+    Serial.println(String(servoAngle) + "°");
+    Serial.println(F("[  OK  ] Проініціалізовано сервопривод."));
+  } else { Serial.println(F("[FAILED] Сбій ініціалізації сервоприводу !!!")); initOK = false; }
+
+  Serial.println(F("\t Налаштування порту LED... "));
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, ledState);
+  delay(200);
+  Serial.print(F("\t Світлодіод готов до роботи на порту "));
+  Serial.println(LED_PIN); 
+  Serial.println(F("[  OK  ] Налаштовано порт світлодіоду."));
+  
+  return initOK;
 }
 
-// ----------------------------------------------------------
-//                 ОБРОБКА СИГНАЛІВ З ПУЛЬТА
-// ----------------------------------------------------------
-/**
- * @brief Обробляє команди з ІЧ-пульта в залежності від поточного режиму.
- *
- * Усі прийняті коди виводяться у Serial Monitor у шістнадцятковому форматі.
- * Відповідна функція обробки викликається залежно від активного режиму меню.
- */
-void HandleIRInput() {
-  if (IrReceiver.decode()) {
-    uint16_t command = IrReceiver.decodedIRData.command;;
-    
-    // Вивід коду кнопки
-    Serial.print("Код кнопки: 0x");
-    Serial.println(command);
-
-    switch (menuMode) {
-      case 0:
-        Serial.println("Режим моніторингу: кнопка прийнята.\n");
-        break;
-      case 1:
-        HandleLEDControl(command);
-        break;
-      case 2:
-        HandleServoControl(command);
-        break;
-    }
-
-    IrReceiver.resume(); // Готуватися до прийому наступного сигналу
-  }
+// === Отримати системний час у форматі [HH:MM:SS] ===
+String GetSystemTime() {
+  String res;
+  
+  unsigned long seconds = millis() / 1000;
+  unsigned int h = seconds / 3600;
+  unsigned int m = (seconds % 3600) / 60;
+  unsigned int s = seconds % 60;
+  char buf[10];
+  sprintf(buf, "%02u:%02u:%02u", h, m, s);
+  res = String(buf);
+  
+  return res;
 }
 
-// ----------------------------------------------------------
-//                    ВИВІД МЕНЮ В ТЕРМІНАЛ
-// ----------------------------------------------------------
-/**
- * @brief Виводить головне меню програми у Serial Monitor.
- */
+// === Вивід меню ===
 void PrintMenu() {
-  Serial.println("\n=== ГОЛОВНЕ МЕНЮ ===");
-  Serial.println("0 - Режим моніторингу кнопок");
-  Serial.println("1 - Керування світлодіодом");
-  Serial.println("2 - Керування сервоприводом");
-  Serial.print("Поточний режим: ");
-  switch (menuMode) {
-    case 0: Serial.println("Моніторинг кнопок"); break;
-    case 1: Serial.println("LED-керування"); break;
-    case 2: Serial.println("Серво-керування"); break;
-  }
-  Serial.println("====================\n");
+  
+  Serial.println(F("\n=============== ГОЛОВНЕ МЕНЮ ==============="));
+  Serial.print  (F("[ INFO ] Uptime : "));
+  Serial.println(GetSystemTime()); 
+  Serial.println(F("[ INFO ] Виберіть режим:\n"));
+  Serial.print  (currentMode == 0 ? "  [1]   " : "   1    " );
+  Serial.println(F(" Режим монітору кнопок пульта"));
+  Serial.print  (currentMode == 1 ? "  [2]   " : "   2    " );
+  Serial.println(F(" Керування світлодіодом"));
+  Serial.print  (currentMode == 2 ? "  [3]   " : "   3    " );
+  Serial.println(F(" Керування сервоприводом"));
+  Serial.print  (currentMode == 3 ? "  [4]   " : "   4    " );
+  Serial.println(F(" Сервісний режим (діагностика системи)"));
+  Serial.println(F("============================================\n"));
 }
 
-// ----------------------------------------------------------
-//              КЕРУВАННЯ СВІТЛОДІОДОМ З ПУЛЬТА
-// ----------------------------------------------------------
-/**
- * @brief Обробляє натискання кнопок пульта у режимі керування LED.
- *
- * Кнопка '*' — вмикає світлодіод.
- * Кнопка '#' — вимикає світлодіод.
- */
-void HandleLEDControl(uint16_t command) {
-  switch (command) {
-    case 0xFFFF: break; // Повтор — пропускаємо
-    case 0xFFE0:   // Код кнопки "*"
-      digitalWrite(LED_PIN, HIGH);
-      Serial.println("💡 Світлодіод УВІМКНЕНО\n");
-      break;
-    case 0xFF02:   // Код кнопки "#"
-      digitalWrite(LED_PIN, LOW);
-      Serial.println("💡 Світлодіод ВИМКНЕНО\n");
-      break;
-    default:
-      Serial.println("Невідома кнопка у режимі LED.");
-  }
+// === Вивід дії у форматі системного логу ===
+void PrintAction(String msg) {
+  Serial.print(GetSystemTime());
+  Serial.print(F(" > [ACTION] "));
+  Serial.println(msg);
 }
 
-// ----------------------------------------------------------
-//               КЕРУВАННЯ СЕРВОПРИВОДОМ
-// ----------------------------------------------------------
-/**
- * @brief Обробляє натискання кнопок пульта у режимі керування сервоприводом.
- *
- * Кнопка '*' — зменшує кут на 3°.
- * Кнопка '#' — збільшує кут на 3°.
- */
-void HandleServoControl(uint16_t command) {
-  switch (command) {
-    case 0xFFFF: break;
-    case 0xFFE0:   // "*"
-      servoAngle -= ANGLE_STEP;
-      if (servoAngle < 0) servoAngle = 0;
-      myServo.write(servoAngle);
-      PrintAngleChange(servoAngle);
-      break;
-    case 0xFF02:   // "#"
-      servoAngle += ANGLE_STEP;
-      if (servoAngle > 180) servoAngle = 180;
-      myServo.write(servoAngle);
-      PrintAngleChange(servoAngle);
-      break;
-    default:
-      Serial.println("Невідома кнопка у режимі серво.");
+// === Обробка введення з терміналу ===
+void HandleSerialInput() {
+  if (Serial.available()>0) {
+    char input = Serial.read();
+    switch (input) {
+
+      case '0':
+        PrintMenu();
+        break;
+      case '1':
+        currentMode = 0;
+        PrintAction(F("Режим: Моніторинг ІЧ-кнопок."));
+        break;
+      case '2':
+        currentMode = 1;
+        PrintAction(F("Режим: Керування світлодіодом."));
+        break;
+      case '3':
+        currentMode = 2;
+        PrintAction(F("Режим: Керування сервоприводом."));
+        break;
+      case '4':
+        currentMode = 3;
+        PrintAction(F("Режим: Сервісний режим (діагностика)."));
+        PrintServiceStatus();
+        break;
+      default:
+        Serial.print(GetSystemTime());
+        Serial.println(F(" > [ERROR ] Невідомий режим. Спробуйте ще раз."));
+        break;
+    }
   }
 }
 
-// ----------------------------------------------------------
-//              ВИВІД КУТА СЕРВО У MONITOR
-// ----------------------------------------------------------
-/**
- * @brief Виводить поточний кут сервоприводу у графічному вигляді.
- * @param angle Поточний кут сервоприводу.
- */
-void PrintAngleChange(int angle) {
-  Serial.print("Поточний кут сервоприводу: ");
-  Serial.print(angle);
-  Serial.print("°  [");
+// === Обробка сигналів пульта ===
+void HandleIRCommand() {
+  unsigned long code;
+  if (IrReceiver.decode()) {
 
-  int filled = map(angle, 0, 180, 0, 20);
-  for (int i = 0; i < 20; i++) {
-    if (i < filled) Serial.print("#");
-    else Serial.print("-");
+    /*
+       Print a summary of received data
+    */
+    if (IrReceiver.decodedIRData.protocol == UNKNOWN) {
+      PrintAction(F("Received noise or an unknown (or not yet enabled) protocol"));
+      // We have an unknown protocol here, print extended info
+      IrReceiver.printIRResultRawFormatted(&Serial, true);
+
+      IrReceiver.resume(); // Do it here, to preserve raw data for printing with printIRResultRawFormatted()
+    } else {
+      code = IrReceiver.decodedIRData.command;
+      IrReceiver.resume(); // Early enable receiving of the next IR frame
+
+      IrReceiver.printIRResultShort(&Serial);
+      IrReceiver.printIRSendUsage(&Serial);
+
+    }
+    Serial.println();
+
+    /*
+       Finally, check the received data and perform actions according to the received command
+    */
+    if (IrReceiver.decodedIRData.flags & IRDATA_FLAGS_IS_REPEAT) {
+
+      Serial.println(F("Repeat received. Here you can repeat the same action as before."));
+    } else {
+      Serial.print(GetSystemTime());
+      Serial.print(F(" > [  IR  ] Отримано код: "));
+      Serial.println(IrReceiver.decodedIRData.decodedRawData, HEX);
+      
+    }
   }
-  Serial.println("]\n");
+
+    switch (currentMode) {
+      case 0: break; // Монітор кодів
+      case 1: ControlLED(code); break;
+      case 2: ControlServo(code); break;
+      case 3: break;
+    }
+
+//    irrecv.resume(); // Готовність до наступного сигналу
+}
+
+// === Керування LED ===
+void ControlLED(unsigned long code) {
+  if (code == BTN_STAR) {
+    digitalWrite(LED_PIN, HIGH);
+    ledState = true;
+    PrintAction(F("Світлодіод УВІМКНЕНО (*)."));
+  } else if (code == BTN_HASH) {
+    digitalWrite(LED_PIN, LOW);
+    ledState = false;
+    PrintAction(F("Світлодіод ВИМКНЕНО (#)."));
+  }
+}
+
+// === Керування сервоприводом ===
+void ControlServo(unsigned long code) {
+  if (code == BTN_STAR) {
+    servoAngle -= 3;
+    if (servoAngle < 0) servoAngle = 0;
+    myServo.write(servoAngle);
+    PrintAction("Сервопривід зменшено на 3° (" + String(servoAngle) + "°).");
+  } else if (code == BTN_HASH) {
+    servoAngle += 3;
+    if (servoAngle > 180) servoAngle = 180;
+    myServo.write(servoAngle);
+    PrintAction("Сервопривід збільшено на 3° (" + String(servoAngle) + "°).");
+  }
+}
+
+void dumpProtocols() {
+
+    Serial.println();
+    Serial.print(F("IR PROTOCOLS  "));
+    Serial.print(F("SEND     "));
+    Serial.println(F("DECODE"));
+    Serial.print(F("============= "));
+    Serial.print(F("======== "));
+    Serial.println(F("========"));
+    Serial.print(F("RC5:          "));
+#if defined(DECODE_RC5)
+    Serial.println(F("Enabled"));
+#else
+    Serial.println(F("Disabled"));
+#endif
+
+    Serial.print(F("RC6:          "));
+#if defined(DECODE_RC6)
+    Serial.println(F("Enabled"));
+#else
+    Serial.println(F("Disabled"));
+#endif
+
+    Serial.print(F("NEC:          "));
+#if defined(DECODE_NEC)
+    Serial.println(F("Enabled"));
+#else
+    Serial.println(F("Disabled"));
+#endif
+
+    Serial.print(F("SONY:         "));
+#if defined(DECODE_SONY)
+    Serial.println(F("Enabled"));
+#else
+    Serial.println(F("Disabled"));
+#endif
+
+    Serial.print(F("PANASONIC:    "));
+#if defined(DECODE_PANASONIC)
+    Serial.println(F("Enabled"));
+#else
+    Serial.println(F("Disabled"));
+#endif
+
+    Serial.print(F("JVC:          "));
+#if defined(DECODE_JVC)
+    Serial.println(F("Enabled"));
+#else
+    Serial.println(F("Disabled"));
+#endif
+
+    Serial.print(F("SAMSUNG:      "));
+#if defined(DECODE_SAMSUNG)
+    Serial.println(F("Enabled"));
+#else
+    Serial.println(F("Disabled"));
+#endif
+
+    Serial.print(F("LG:           "));
+#if defined(DECODE_LG)
+    Serial.println(F("Enabled"));
+#else
+    Serial.println(F("Disabled"));
+#endif
+
+    Serial.print(F("DENON:        "));
+#if defined(DECODE_DENON)
+    Serial.println(F("Enabled"));
+#else
+    Serial.println(F("Disabled"));
+#endif
+
+#if !defined(EXCLUDE_EXOTIC_PROTOCOLS) // saves around 2000 bytes program memory
+
+    Serial.print(F("BANG_OLUFSEN: "));
+#if defined(DECODE_BEO)
+    Serial.println(F("Enabled"));
+#else
+    Serial.println(F("Disabled"));
+#endif
+
+    Serial.print(F("BOSEWAVE:     "));
+#if defined(DECODE_BOSEWAVE)
+    Serial.println(F("Enabled"));
+#else
+    Serial.println(F("Disabled"));
+#endif
+
+    Serial.print(F("WHYNTER:      "));
+#if defined(DECODE_WHYNTER)
+    Serial.println(F("Enabled"));
+#else
+    Serial.println(F("Disabled"));
+#endif
+
+    Serial.print(F("FAST:         "));
+#if defined(DECODE_FAST)
+    Serial.println(F("Enabled"));
+#else
+    Serial.println(F("Disabled"));
+#endif
+#endif
+}
+
+// === Сервісний режим ===
+void PrintServiceStatus() {
+
+  Serial.println(F("\n=============== SERVICEMODE ==============="));
+  Serial.println(F("[ INFO ]        Статус системи"));
+
+  String ledStatus = digitalRead(LED_PIN) ? "УВІМКНЕНО" : "ВИМКНЕНО";
+  Serial.println(  " LED          : Порт -> " + String(LED_PIN));
+  Serial.println(  " LED          : " + ledStatus);
+  Serial.println(F(" Servo        : Підключено"));
+  Serial.println(  " Servo        : Кут = " + String(servoAngle) + "°");
+  Serial.println(  " IR Receiver  : " + String(IrReceiver.isIdle() ? "Готовий" : "Помилка"));
+  Serial.println(  " IR Receiver  : Порт -> " + String(IR_RECEIVE_PIN));
+
+  Serial.println(F(" Servo Lib    : 1.2.2"));
+  Serial.println(F(" IRremote Lib : " VERSION_IRREMOTE));
+  Serial.print(F(" Arduino Core : AVR @ "));
+  Serial.print(F_CPU / 1000000);
+  Serial.println(F(" MHz"));
+/*
+  unsigned long seconds = millis() / 1000;
+  unsigned int h = seconds / 3600;
+  unsigned int m = (seconds % 3600) / 60;
+  unsigned int s = seconds % 60;
+  char buf[10];
+  sprintf(buf, "%02u:%02u:%02u", h, m, s);
+*/
+  Serial.println(" Uptime       : " + GetSystemTime());
+
+  Serial.println(F("==========================================\n"));
+  dumpProtocols();
+//  PrintMenu();
 }
