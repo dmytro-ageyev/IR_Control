@@ -49,16 +49,16 @@
 void BubbleSort_Mon(int arr[], int size)
 {
   // Початкове повідомлення про старт алгоритму
-  Serial.println("=== Початок сортування методом 'Бульбашки' ===\r\n");
+  Serial.println(F("=== Початок сортування методом 'Бульбашки' ===\r\n"));
 
   // ===== Зовнішній цикл =====
   // Відповідає за кількість проходів по масиву.
   // Після кожного проходу найбільший елемент переміщується в кінець.
   for (int i = 0; i < size - 1; i++)
   {
-    Serial.print("Прохід №");
+    Serial.print(F("Прохід №"));
     Serial.println(i + 1);
-    Serial.println("----------------------------");
+    Serial.println(F("----------------------------"));
 
     bool swapped = false; // Прапорець для відстеження виконаних обмінів
 
@@ -68,7 +68,7 @@ void BubbleSort_Mon(int arr[], int size)
     for (int j = 0; j < size - i - 1; j++)
     {
       // Виведення порівнюваних елементів
-      Serial.print("  Порівнюємо arr[");
+      Serial.print(F("  Порівнюємо arr["));
       Serial.print(j);
       Serial.print("] = ");
       Serial.print(arr[j]);
@@ -80,7 +80,7 @@ void BubbleSort_Mon(int arr[], int size)
       // Якщо поточний елемент більший за наступний — виконуємо обмін
       if (arr[j] > arr[j + 1])
       {
-        Serial.println("  → Умову виконано: arr[j] > arr[j+1], виконується обмін.");
+        Serial.println(F("  → Умову виконано: arr[j] > arr[j+1], виконується обмін."));
 
         // Тимчасова змінна для збереження значення arr[j]
         int temp = arr[j];
@@ -90,7 +90,7 @@ void BubbleSort_Mon(int arr[], int size)
         swapped = true; // Фіксуємо, що відбувся обмін
 
         // Вивід стану масиву після обміну
-        Serial.println("  Поточний стан масиву після обміну: ");
+        Serial.println(F("  Поточний стан масиву після обміну: "));
         for (int k = 0; k < size; k++)
         {
           Serial.print(arr[k]);
@@ -101,7 +101,7 @@ void BubbleSort_Mon(int arr[], int size)
       }
       else
       {
-        Serial.println("  → Обміну не потрібно, порядок правильний.\n");
+        Serial.println(F("  → Обміну не потрібно, порядок правильний.\n"));
       }
     }
 
@@ -109,12 +109,12 @@ void BubbleSort_Mon(int arr[], int size)
     // Якщо за прохід не було жодного обміну — масив уже впорядкований
     if (!swapped)
     {
-      Serial.println("  Жодного обміну не відбулося — масив уже впорядкований.\r\n");
+      Serial.println(F("  Жодного обміну не відбулося — масив уже впорядкований.\r\n"));
       break; // Виходимо з зовнішнього циклу достроково
     }
 
     // Виведення елемента, який «сплив» у свій кінець після проходу
-    Serial.print("  Елемент, що 'сплив' на позицію ");
+    Serial.print(F("  Елемент, що 'сплив' на позицію "));
     Serial.print(size - i - 1);
     Serial.print(": ");
     Serial.println(arr[size - i - 1]);
@@ -122,6 +122,6 @@ void BubbleSort_Mon(int arr[], int size)
   }
 
   // ===== Завершення сортування =====
-  Serial.println("=== Сортування завершено ===\r\n");
+  Serial.println(F("=== Сортування завершено ===\r\n"));
 }
 

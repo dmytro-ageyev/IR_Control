@@ -14,8 +14,8 @@ bool ledState = false;     // Поточний стан LED
 int currentMode = 0;       // 0 - Монітор, 1 - LED, 2 - Servo, 3 - Сервіс
 
 // --- Коди кнопок пульта ---
-#define BTN_STAR 0xFFA25D  // *
-#define BTN_HASH 0xFFB04F  // #
+#define BTN_STAR 22  // *
+#define BTN_HASH 13  // #
 
 // --- Прототипи функцій ---
 void PrintMenu();
@@ -79,7 +79,7 @@ bool InitSystem() {
   else { Serial.println(F("[FAILED] Сбій ініціалізації Serial !!!")); initOK = false; }
 
   Serial.println(F("\t Запуск приймача ІЧ-сигналів... "));
-  IrReceiver.begin(IR_RECEIVE_PIN, ENABLE_LED_FEEDBACK);
+  IrReceiver.begin(IR_RECEIVE_PIN, DISABLE_LED_FEEDBACK); // ENABLE_LED_FEEDBACK);
   delay(200);
   Serial.print(F("\t Готов до прийому ІЧ-сигналів на порту "));
   // printActiveIRProtocols(&Serial);
@@ -104,8 +104,9 @@ bool InitSystem() {
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, ledState);
   delay(200);
-  Serial.print(F("\t Світлодіод готов до роботи на порту "));
+  Serial.print  (F("\t Світлодіод готов до роботи на порту "));
   Serial.println(LED_PIN); 
+  Serial.println(  "\t Світлодіод " + String(ledState ? "УВІМКНЕНО" : "ВИМКНЕНО"));
   Serial.println(F("[  OK  ] Налаштовано порт світлодіоду."));
   
   return initOK;
@@ -187,7 +188,7 @@ void HandleSerialInput() {
 
 // === Обробка сигналів пульта ===
 void HandleIRCommand() {
-  unsigned long code;
+  unsigned long code = 0;
   if (IrReceiver.decode()) {
 
     /*
@@ -201,25 +202,31 @@ void HandleIRCommand() {
       IrReceiver.resume(); // Do it here, to preserve raw data for printing with printIRResultRawFormatted()
     } else {
       code = IrReceiver.decodedIRData.command;
-      IrReceiver.resume(); // Early enable receiving of the next IR frame
-
+      Serial.print(GetSystemTime());
+      Serial.print(F(" > [  IR  ] Отримано код: "));
+      Serial.print(code);
+      Serial.print(F(" >> "));
+      Serial.println(IrReceiver.decodedIRData.decodedRawData, HEX);
       IrReceiver.printIRResultShort(&Serial);
       IrReceiver.printIRSendUsage(&Serial);
-
+      IrReceiver.resume(); // Early enable receiving of the next IR frame
     }
-    Serial.println();
+   // Serial.println();
 
     /*
        Finally, check the received data and perform actions according to the received command
     */
     if (IrReceiver.decodedIRData.flags & IRDATA_FLAGS_IS_REPEAT) {
+      Serial.print(GetSystemTime());
+      Serial.println(F(" > [  IR  ] Repeat received."));
 
-      Serial.println(F("Repeat received. Here you can repeat the same action as before."));
     } else {
       Serial.print(GetSystemTime());
       Serial.print(F(" > [  IR  ] Отримано код: "));
+      Serial.print(code);
+      Serial.print(F(" >> "));
       Serial.println(IrReceiver.decodedIRData.decodedRawData, HEX);
-      
+    
     }
   }
 
@@ -229,7 +236,6 @@ void HandleIRCommand() {
       case 2: ControlServo(code); break;
       case 3: break;
     }
-
 //    irrecv.resume(); // Готовність до наступного сигналу
 }
 
@@ -259,6 +265,7 @@ void ControlServo(unsigned long code) {
     myServo.write(servoAngle);
     PrintAction("Сервопривід збільшено на 3° (" + String(servoAngle) + "°).");
   }
+  // code = 0; // Скидання коду після обробки
 }
 
 void dumpProtocols() {
@@ -381,17 +388,10 @@ void PrintServiceStatus() {
 
   Serial.println(F(" Servo Lib    : 1.2.2"));
   Serial.println(F(" IRremote Lib : " VERSION_IRREMOTE));
-  Serial.print(F(" Arduino Core : AVR @ "));
-  Serial.print(F_CPU / 1000000);
+  Serial.print  (F(" Arduino Core : AVR @ "));
+  Serial.print  (F_CPU / 1000000);
   Serial.println(F(" MHz"));
-/*
-  unsigned long seconds = millis() / 1000;
-  unsigned int h = seconds / 3600;
-  unsigned int m = (seconds % 3600) / 60;
-  unsigned int s = seconds % 60;
-  char buf[10];
-  sprintf(buf, "%02u:%02u:%02u", h, m, s);
-*/
+
   Serial.println(" Uptime       : " + GetSystemTime());
 
   Serial.println(F("==========================================\n"));
